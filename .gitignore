@@ -20,3 +20,4 @@ gradlew.bat
 settings.gradle
 app/build/outputs/logs/*
 app/build/outputs/logs/manifest-merger-debug-report.txt
+app/build/generated/not_namespaced_r_class_sources/*

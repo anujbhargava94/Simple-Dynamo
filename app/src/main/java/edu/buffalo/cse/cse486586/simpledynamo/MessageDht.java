@@ -8,17 +8,13 @@ import java.util.Map;
 public class MessageDht implements Serializable {
 
 
-    private Enum<MessageDhtType> msgType;
+    private int msgType;
     private Map<String, String> contentValues;
     private String parentPort;
     private String selfPort;
-    private String prePort;
-    private String succPort;
     private String toPort;
-    private Map<String, String> queryContent;
     private String queryKey;           //also used for delete key
     private String queryResponse;
-    private Pair<String,String> content;
     private String messageOwner;       //where the message actually belongs
 
     public String getMessageOwner() {
@@ -27,14 +23,6 @@ public class MessageDht implements Serializable {
 
     public void setMessageOwner(String messageOwner) {
         this.messageOwner = messageOwner;
-    }
-
-    public Pair<String, String> getContent() {
-        return content;
-    }
-
-    public void setContent(Pair<String, String> content) {
-        this.content = content;
     }
 
     public String getQueryResponse() {
@@ -61,19 +49,11 @@ public class MessageDht implements Serializable {
         this.queryKey = queryKey;
     }
 
-    public Map<String, String> getQueryContent() {
-        return queryContent;
-    }
-
-    public void setQueryContent(Map<String, String> queryContent) {
-        this.queryContent = queryContent;
-    }
-
-    public Enum<MessageDhtType> getMsgType() {
+    public int getMsgType() {
         return msgType;
     }
 
-    public void setMsgType(Enum<MessageDhtType> msgType) {
+    public void setMsgType(int msgType) {
         this.msgType = msgType;
     }
 
@@ -101,19 +81,4 @@ public class MessageDht implements Serializable {
         this.selfPort = selfPort;
     }
 
-    public String getPrePort() {
-        return prePort;
-    }
-
-    public void setPrePort(String prePort) {
-        this.prePort = prePort;
-    }
-
-    public String getSuccPort() {
-        return succPort;
-    }
-
-    public void setSuccPort(String succPort) {
-        this.succPort = succPort;
-    }
 }
