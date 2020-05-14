@@ -16,6 +16,15 @@ public class MessageDht implements Serializable {
     private String queryKey;           //also used for delete key
     private String queryResponse;
     private String messageOwner;       //where the message actually belongs
+    private String recoveryPort;
+
+    public String getRecoveryPort() {
+        return recoveryPort;
+    }
+
+    public void setRecoveryPort(String recoveryPort) {
+        this.recoveryPort = recoveryPort;
+    }
 
     public String getMessageOwner() {
         return messageOwner;

@@ -38,12 +38,9 @@ public class SimpleDynamoProvider extends ContentProvider {
     static final int SERVER_PORT = 10000;
     private static final String SERVER_TAG = "Server Log";
     private static final String CLIENT_TAG = "Client Log";
-    static String prePort;
-    static String succPort;
     static String myPort;
     private static final String KEY_FIELD = "key";
     private static final String VALUE_FIELD = "value";
-    private final Uri mUri = buildUri("content", "edu.buffalo.cse.cse486586.simpledht.provider");
     private static AtomicBoolean queryFlag = new AtomicBoolean(false);
     Map<String, String> messageGlobal;
     String singleMessageGlobal;
@@ -55,21 +52,17 @@ public class SimpleDynamoProvider extends ContentProvider {
     static final String REMOTE_PORT4 = "11124";
     AtomicBoolean inserting = new AtomicBoolean(false);
     AtomicBoolean deleteFlag = new AtomicBoolean(false);
+    AtomicBoolean recoveryFlag = new AtomicBoolean(false);
     private List<String> ring = new LinkedList<String>(
             Arrays.asList(REMOTE_PORT4, REMOTE_PORT1, REMOTE_PORT0, REMOTE_PORT2, REMOTE_PORT3)
     );
 
-
-    private Uri buildUri(String scheme, String authority) {
-        Uri.Builder uriBuilder = new Uri.Builder();
-        uriBuilder.authority(authority);
-        uriBuilder.scheme(scheme);
-        return uriBuilder.build();
-    }
-
     @Override
     public synchronized int delete(Uri uri, String selection, String[] selectionArgs) {
         // TODO Auto-generated method stub
+        while (recoveryFlag.get() || inserting.get()) {
+
+        }
         SharedPreferences sharedPref = getContext().getSharedPreferences(PREFNAME, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPref.edit();
         editor.remove(selection);
@@ -99,7 +92,9 @@ public class SimpleDynamoProvider extends ContentProvider {
     @Override
     public synchronized Uri insert(Uri uri, ContentValues values) {
         // TODO Auto-generated method stub
+        while (recoveryFlag.get()) {
 
+        }
         if (values == null || values.size() < 1) {
             return null;
         }
@@ -134,6 +129,10 @@ public class SimpleDynamoProvider extends ContentProvider {
         String portStr = tel.getLine1Number().substring(tel.getLine1Number().length() - 4);
         myPort = String.valueOf((Integer.parseInt(portStr) * 2));
         serverSocketInit();
+        recoveryFlag.set(true);
+        MessageDht msg = new MessageDht();
+        msg.setMsgType(MessageDhtType.RECOVERY.scope);
+        sendMessage(msg);
         return false;
     }
 
@@ -141,6 +140,9 @@ public class SimpleDynamoProvider extends ContentProvider {
     public synchronized Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs,
                                      String sortOrder) {
 
+        while (recoveryFlag.get()) {
+
+        }
         MatrixCursor cursor = null;
         String[] columnNames = new String[]{KEY_FIELD, VALUE_FIELD};
         SharedPreferences sharedPref = getContext().getSharedPreferences(PREFNAME, Context.MODE_PRIVATE);
@@ -152,12 +154,11 @@ public class SimpleDynamoProvider extends ContentProvider {
             messageGlobal = (Map<String, String>) sharedPref.getAll();
             MessageDht messageDht = new MessageDht();
             messageDht.setSelfPort(myPort);
-            messageDht.setToPort(succPort);
             messageDht.setContentValues(messageGlobal);
             messageDht.setMsgType(MessageDhtType.QUERYGLOBAL.scope);
             sendMessage(messageDht);
             queryFlag.set(true);
-            while (queryFlag.get()) {
+            while (queryFlag.get() || recoveryFlag.get() || inserting.get()) {
 
             }
 
@@ -172,10 +173,10 @@ public class SimpleDynamoProvider extends ContentProvider {
             msg.setMsgType(MessageDhtType.QUERYSINGLE.scope);
             sendMessage(msg);
             queryFlag.set(true);
-            while (queryFlag.get()) {
+            while (queryFlag.get() || recoveryFlag.get() || inserting.get()) {
             }
 
-            Log.v(CLIENT_TAG, "Response for query key"+selection+ "value of singleMesageGlobal: " +singleMessageGlobal);
+            Log.v(CLIENT_TAG, "Response for query key" + selection + "value of singleMesageGlobal: " + singleMessageGlobal);
             String[] columnValues = new String[]{selection, singleMessageGlobal};
             cursor = new MatrixCursor(columnNames, 1);
             try {
@@ -208,7 +209,7 @@ public class SimpleDynamoProvider extends ContentProvider {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-                Log.v(CLIENT_TAG, "Response for query Gobal key"+selection+ "value of mag query response: " +msg.getQueryResponse());
+                Log.v(CLIENT_TAG, "Response for query Gobal key" + selection + "value of mag query response: " + msg.getQueryResponse());
                 columnValues[1] = msg.getQueryResponse();
                 cursor.addRow(columnValues);
             }
@@ -260,6 +261,9 @@ public class SimpleDynamoProvider extends ContentProvider {
                         msgReceived = readMessage(socket.getInputStream());
                         if (msgReceived.getMsgType() == MessageDhtType.INSERT.scope) {
                             Log.d(SERVER_TAG, "inside insert cond 1");
+                            while(recoveryFlag.get()){
+
+                            }
                             try {
                                 Gson json = new Gson();
                                 String key = msgReceived.getQueryKey();
@@ -270,6 +274,9 @@ public class SimpleDynamoProvider extends ContentProvider {
                             }
                         } else if (msgReceived.getMsgType() == MessageDhtType.QUERYGLOBAL.scope) {
                             Log.d(SERVER_TAG, "inside query global");
+                            while(recoveryFlag.get() || inserting.get()){
+
+                            }
                             SharedPreferences sharedPref = getContext().getSharedPreferences(PREFNAME, Context.MODE_PRIVATE);
                             Map<String, String> messageLocal = (Map<String, String>) sharedPref.getAll();
                             Map<String, String> messageGlobal = msgReceived.getContentValues();
@@ -279,21 +286,42 @@ public class SimpleDynamoProvider extends ContentProvider {
                             msgReceived.setContentValues(messageGlobal);
                             sendMessage(socket.getOutputStream(), msgReceived);
                         } else if (msgReceived.getMsgType() == MessageDhtType.QUERYSINGLE.scope) {
+                            Log.d(SERVER_TAG, "inside query single");
+                            while(recoveryFlag.get() || inserting.get()){
+
+                            }
                             SharedPreferences sharedPref = getContext().getSharedPreferences(PREFNAME, Context.MODE_PRIVATE);
                             String queryValue = sharedPref.getString(msgReceived.getQueryKey(), null);
                             MessageDht msg = getMessageFromGson(queryValue);
                             String value = "";
-                            if(msg!=null){
+                            if (msg != null) {
                                 value = msg.getQueryResponse();
                             }
                             msgReceived.setQueryResponse(value);
                             sendMessage(socket.getOutputStream(), msgReceived);
                         } else if (msgReceived.getMsgType() == MessageDhtType.DELETE.scope) {
                             Log.d(SERVER_TAG, "inside delete");
+                            while(recoveryFlag.get() || inserting.get()){
+
+                            }
                             SharedPreferences sharedPref = getContext().getSharedPreferences(PREFNAME, Context.MODE_PRIVATE);
                             SharedPreferences.Editor editor = sharedPref.edit();
                             editor.remove(msgReceived.getQueryKey());
                             editor.apply();
+                        } else if (msgReceived.getMsgType() == MessageDhtType.RECOVERY.scope) {
+                            Log.d(SERVER_TAG, "inside recovery ");
+                            SharedPreferences sharedPref = getContext().getSharedPreferences(PREFNAME, Context.MODE_PRIVATE);
+                            Map<String, String> messageLocal = (Map<String, String>) sharedPref.getAll();
+                            Map<String, String> filterMessage = new HashMap<String, String>();
+                            filterMessage = filterMessageByOwner(messageLocal, msgReceived.getRecoveryPort());
+                            Map<String, String> messageGlobal = msgReceived.getContentValues();
+                            if (messageGlobal == null) {
+                                messageGlobal = new HashMap<String, String>();
+                            }
+                            messageGlobal.putAll(filterMessage);
+                            Log.v(SERVER_TAG,"Inside recovery message sending recovered message size "+messageGlobal.size());
+                            msgReceived.setContentValues(messageGlobal);
+                            sendMessage(socket.getOutputStream(), msgReceived);
                         }
                     } catch (Exception e) {
                         Log.d(SERVER_TAG, "socket timeout for server while reading");
@@ -303,6 +331,21 @@ public class SimpleDynamoProvider extends ContentProvider {
                 }
             }
         }
+    }
+
+    private Map<String, String> filterMessageByOwner(Map<String, String> messageLocal, String recoveryPort) {
+        Log.v(SERVER_TAG,"Inside filter message for port: "+recoveryPort);
+        Map<String, String> filterMessage = new HashMap<String, String>();
+        for (Map.Entry<String, String> entry : messageLocal.entrySet()) {
+            String value = entry.getValue();
+            MessageDht msg = getMessageFromGson(value);
+            if (msg.getMessageOwner().equals(recoveryPort)) {
+                Log.v(SERVER_TAG,"Inside filter message for matched port: "+recoveryPort+ " key "+entry.getKey());
+                filterMessage.put(entry.getKey(), getJsonString(msg));
+            }
+        }
+        Log.v(SERVER_TAG,"Inside filter message for port: "+recoveryPort+" filter message size "+filterMessage.size());
+        return filterMessage;
     }
 
     private void sendMessage(MessageDht msg) {
@@ -341,7 +384,7 @@ public class SimpleDynamoProvider extends ContentProvider {
                         try {
                             sendMessage(socket.getOutputStream(), msgs[0]);
                             msgReceived[i] = readMessage(socket.getInputStream());
-                            Log.v(CLIENT_TAG, "Received message for single query for port: "+msgs[0].getToPort()+ " :: "+msgReceived[i].getQueryResponse());
+                            Log.v(CLIENT_TAG, "Received message for single query for port: " + msgs[0].getToPort() + " :: " + msgReceived[i].getQueryResponse());
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -376,7 +419,7 @@ public class SimpleDynamoProvider extends ContentProvider {
                             finalValue = nonNullValue;
                         }
                     }
-                    Log.v(CLIENT_TAG, "Returning final query response: "+finalValue);
+                    Log.v(CLIENT_TAG, "Returning final query response: " + finalValue);
                     singleMessageGlobal = finalValue;
                     queryFlag.set(false);
 
@@ -408,6 +451,45 @@ public class SimpleDynamoProvider extends ContentProvider {
                     }
                     messageGlobal = msgs[0].getContentValues();
                     queryFlag.set(false);
+                } else if (msgs[0].getMsgType() == MessageDhtType.RECOVERY.scope) {
+                    Log.v(CLIENT_TAG, "Inside Recovery: ");
+                    String[] ports = new String[3];
+                    String[] ownerPorts = new String[3];
+                    ports[1] = getSuccessor(myPort);
+                    ports[0] = getSuccessor(ports[1]);
+                    ports[2] = getPredecessor(myPort);
+                    ownerPorts[0] = myPort;
+                    ownerPorts[1] = getPredecessor(myPort);
+                    ownerPorts[2] = getPredecessor(ownerPorts[1]);
+                    for (int i = 0; i < ports.length; i++) {
+                        socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}),
+                                Integer.parseInt(ports[i]));
+                        try {
+                            Log.v(CLIENT_TAG, "Inside Recovery sending request to : "+ports[i]+" owner port "+ownerPorts[i] );
+                            msgs[0].setRecoveryPort(ownerPorts[i]);
+                            sendMessage(socket.getOutputStream(), msgs[0]);
+                            msgs[0] = readMessage(socket.getInputStream());
+                            if(msgs[0].getContentValues()!=null)
+                            {
+                                Log.v(CLIENT_TAG, "Inside Recovery received request from : "+ports[i]+" owner port "+ownerPorts[i]+ " message size: "+msgs[0].getContentValues().size() );
+                            }else{
+                                Log.v(CLIENT_TAG, "Inside Recovery received request from : "+ports[i]+" owner port "+ownerPorts[i]+ " message null ");
+                            }
+
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    Map<String, String> recoveredMsgs = msgs[0].getContentValues();
+                    if (recoveredMsgs != null && !recoveredMsgs.isEmpty()) {
+                        Log.v(CLIENT_TAG, "Inside Recovery received msgs: "+recoveredMsgs.size());
+                        for (Map.Entry<String, String> entry : recoveredMsgs.entrySet()) {
+                            insertInPref(entry.getKey(), entry.getValue());
+                        }
+                    }else{
+                        Log.v(CLIENT_TAG, "Inside Recovery received msgs: null");
+                    }
+                    recoveryFlag.set(false);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -461,14 +543,13 @@ public class SimpleDynamoProvider extends ContentProvider {
     private String getOwnerPortByHash(String key) {
         String port = null;
         try {
-            Log.v(SERVER_TAG,"Inside get owner port for "+key);
+            Log.v(SERVER_TAG, "Inside get owner port for " + key);
             String keyHash = genHash(key);
             String currPortHash = genHashForPort(ring.get(0));
             String prePortHash = genHashForPort(ring.get(4));
 
             if ((prePortHash.compareTo(keyHash) > 0 && currPortHash.compareTo(keyHash) > 0) ||
                     (prePortHash.compareTo(keyHash) < 0 && currPortHash.compareTo(keyHash) < 0)) {
-                Log.v(SERVER_TAG,"Inside get owner port condition 1 "+key);
                 return ring.get(0);
             }
 
@@ -494,7 +575,7 @@ public class SimpleDynamoProvider extends ContentProvider {
         Log.v("inserted", value);
     }
 
-    private MessageDht getMessageFromGson(String json){
+    private MessageDht getMessageFromGson(String json) {
         MessageDht msg = new MessageDht();
         try {
             Gson gson = new Gson();
@@ -506,6 +587,16 @@ public class SimpleDynamoProvider extends ContentProvider {
             e.printStackTrace();
         }
         return msg;
+    }
+
+    private String getJsonString(MessageDht msg) {
+        try {
+            Gson gson = new Gson();
+            return gson.toJson(msg);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "";
     }
 
 

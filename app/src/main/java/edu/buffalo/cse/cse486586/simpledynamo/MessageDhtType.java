@@ -6,7 +6,8 @@ public enum MessageDhtType implements Serializable {
     INSERT(0),
     QUERYGLOBAL(1),
     QUERYSINGLE(2),
-    DELETE(3);
+    DELETE(3),
+    RECOVERY(4);
 
     int scope;
     MessageDhtType(int scope) {
