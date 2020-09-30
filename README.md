@@ -29,7 +29,7 @@ f. For read operations, if the readers in the reader quorum have different versi
 of the same object, the coordinator picks the most recent version and
 return it.
 
-### 5. Failure handling
+### 4. Failure handling
 a. Handling failures is done very carefully because there can be many
 corner cases to consider and cover.
 b. Just as the original Dynamo, each request can be used to detect a node failure.
